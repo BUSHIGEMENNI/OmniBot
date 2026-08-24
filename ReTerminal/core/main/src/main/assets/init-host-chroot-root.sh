@@ -110,21 +110,33 @@ bind_one "$PREFIX/local/vmstat" /proc/vmstat
 bind_one "$ROOTFS_DIR/tmp" /dev/shm
 
 # 共享工作区：容器内 /workspace 与 App 侧同一目录
+# 自愈 app uid 拥有权：chroot 写的所有文件 owner=root，但 $PREFIX 内**所有**历史
+# 文件（含 rootfs 内嵌的 init-host.sh、proot、untar 日志、local/run/、tmp 等）必须
+# 也是 app uid 可访问——否则 App 进 /tmp 看日志、写 chroot pid file 等都会 EACCES。
+# 反查 app uid：$PREFIX = /data/data/<package>，owner 是 app uid（Android 保证）。
+app_uid=$(stat -c '%u' "$PREFIX")
+chown_recursive_to_app() {
+    [ -n "$app_uid" ] && [ "$app_uid" != "0" ] || return 0
+    # 不递归 ROOTFS_DIR 自身：rootfs 是 ubuntu base image，保留 root:root 是预期
+    # （apt/dpkg 在容器内能写 rootfs 的所有目录）。只对**外部挂载路径**做自愈。
+    local target="$1"
+    [ -d "$target" ] || return 0
+    chown -R "$app_uid:$app_uid" "$target" 2>/dev/null || true
+}
 if [ -n "$OMNIBOT_HOST_WORKSPACE" ]; then
     # 设 setgid + group rwx：配合 init.sh 的 umask 002，让容器内 root 写出的文件
     # 天然 group=app uid 且 group 可写，App（uid=appUid）无需事后 chown 即可编辑。
     # 否则 root 写文件 owner=root、0644，App 落 other 无写权限 → Flutter 编辑器保存报
     # Permission denied（Agent 用 terminal 写 workspace 的根因）。root 权限无限制，每次启动自愈。
     chmod 2770 "$OMNIBOT_HOST_WORKSPACE" 2>/dev/null || true
-    # chown 老文件到 app uid：chroot 写的新文件 owner=root:group=app，但**历史**
-    # 文件（root:root 0600）保持原主，App 读不到；每次启动自愈。app uid 从
-    # $PREFIX 反查：path 是 /data/data/<package>/...，owner 是 $PREFIX 的属主。
-    app_uid=$(stat -c '%u' "$PREFIX")
-    if [ -n "$app_uid" ] && [ "$app_uid" != "0" ]; then
-        chown -R "$app_uid:$app_uid" "$OMNIBOT_HOST_WORKSPACE" 2>/dev/null || true
-    fi
+    chown_recursive_to_app "$OMNIBOT_HOST_WORKSPACE"
     bind_one "$OMNIBOT_HOST_WORKSPACE" /workspace
 fi
+
+# 自愈 chroot 后端写入的关键外部路径：local/run/ (pid files)
+# 注意：rootfs/tmp/ 不要全 chown——里面是 /dev/shm bind 源，apt/dpkg 会写 lock 文件
+# （owner 必须是 root）。只针对 init.sh / init-host.sh 等 proot 模式下写的 root:root 日志。
+chown_recursive_to_app "$PREFIX/local/run"
 
 # MT 管理器共享存储
 if [ -n "$OMNIBOT_MT_STORAGE_HOST" ] && [ -d "$OMNIBOT_MT_STORAGE_HOST" ]; then
