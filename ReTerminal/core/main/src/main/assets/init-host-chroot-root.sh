@@ -116,6 +116,13 @@ if [ -n "$OMNIBOT_HOST_WORKSPACE" ]; then
     # 否则 root 写文件 owner=root、0644，App 落 other 无写权限 → Flutter 编辑器保存报
     # Permission denied（Agent 用 terminal 写 workspace 的根因）。root 权限无限制，每次启动自愈。
     chmod 2770 "$OMNIBOT_HOST_WORKSPACE" 2>/dev/null || true
+    # chown 老文件到 app uid：chroot 写的新文件 owner=root:group=app，但**历史**
+    # 文件（root:root 0600）保持原主，App 读不到；每次启动自愈。app uid 从
+    # $PREFIX 反查：path 是 /data/data/<package>/...，owner 是 $PREFIX 的属主。
+    app_uid=$(stat -c '%u' "$PREFIX")
+    if [ -n "$app_uid" ] && [ "$app_uid" != "0" ]; then
+        chown -R "$app_uid:$app_uid" "$OMNIBOT_HOST_WORKSPACE" 2>/dev/null || true
+    fi
     bind_one "$OMNIBOT_HOST_WORKSPACE" /workspace
 fi
 
