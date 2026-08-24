@@ -169,8 +169,8 @@ android {
         applicationId = "cn.com.omnimind.bot"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.5.8.4"
+        versionCode = 7
+        versionName = "0.5.9"
         buildConfigField("String", "IMAGE_BASE_URL", buildConfigString(omnibotImageBaseUrl))
         buildConfigField("String", "IMAGE_MODEL", buildConfigString(omnibotImageModel))
         buildConfigField("String", "IMAGE_API_KEY", buildConfigString(omnibotImageApiKey))
@@ -224,7 +224,7 @@ android {
             keyAlias = project.findProperty("OMNI_RELEASE_KEY_ALIAS") as String?
             keyPassword = project.findProperty("OMNI_RELEASE_KEY_PWD") as String?
 
-            // V2/V3签名配置（minSdk=30）
+            // V2/V3签名配置（minSdk=30�?
             enableV1Signing = false
             enableV2Signing = true
             enableV3Signing = true
@@ -337,7 +337,7 @@ android {
     lint {
         // 使用项目根目录的 lint.xml 配置
         lintConfig = file("../lint.xml")
-        // 将错误视为警告继续构建
+        // 将错误视为警告继续构�?
         abortOnError = false
     }
 }

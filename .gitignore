@@ -47,3 +47,6 @@ reports/
 
 # Optional local on-device model checkout is not part of the host app.
 /third_party/omniinfer/
+
+# Local progress notes / build logs
+/.progress/
