@@ -69,7 +69,13 @@ object EmbeddedTerminalLaunchHelper {
             selectedPackageIds = selectedPackageIds,
             workingMode = workingMode
         )
-        val initHostPath = File(context.filesDir.parentFile, "local/bin/init-host").absolutePath
+        val initHostPath = resolveInitHostPath(
+            context,
+            EmbeddedTerminalLaunchTargets.pendingInitHostFileName(
+                openSetup = true,
+                uiBackend = Settings.container_backend
+            )
+        )
 
         pendingCommand = TerminalCommand(
             shell = ShellArgv.SYSTEM_SH,
@@ -91,7 +97,13 @@ object EmbeddedTerminalLaunchHelper {
 
     private fun prepareTerminalSession(context: Context, workingMode: Int) {
         val distribution = TerminalDistribution.fromWorkingMode(workingMode)
-        val initHostPath = File(context.filesDir.parentFile, "local/bin/init-host").absolutePath
+        val initHostPath = resolveInitHostPath(
+            context,
+            EmbeddedTerminalLaunchTargets.pendingInitHostFileName(
+                openSetup = false,
+                uiBackend = Settings.container_backend
+            )
+        )
         pendingCommand = TerminalCommand(
             shell = ShellArgv.SYSTEM_SH,
             args = ShellArgv.buildShellScriptArgv(initHostPath),
@@ -99,6 +111,10 @@ object EmbeddedTerminalLaunchHelper {
             workingMode = distribution.workingMode,
             terminatePreviousSession = false,
             workingDir = "/"
+        )
+        Log.d(
+            TAG,
+            "Prepared terminal session ${ShellArgv.formatExecSpec(ShellArgv.SYSTEM_SH, pendingCommand!!.args, "/")}"
         )
     }
 
@@ -119,5 +135,9 @@ object EmbeddedTerminalLaunchHelper {
         scriptFile.writeText(content)
         scriptFile.setExecutable(true, false)
         return scriptFile.absolutePath
+    }
+
+    private fun resolveInitHostPath(context: Context, fileName: String): String {
+        return File(context.filesDir.parentFile, "local/bin/$fileName").absolutePath
     }
 }
