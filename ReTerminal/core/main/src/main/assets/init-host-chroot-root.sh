@@ -138,6 +138,15 @@ fi
 # （owner 必须是 root）。只针对 init.sh / init-host.sh 等 proot 模式下写的 root:root 日志。
 chown_recursive_to_app "$PREFIX/local/run"
 
+# 自愈 $PREFIX 下所有非-rootfs 子树的文件：用户在 chroot 外用 `su -c` 写入
+# workspace/.omnibot 或 shared_prefs/databases 等任何位置产生的 root:root 文件，
+# App 后续会 EACCES；每次启动自愈一次性覆盖。排除 ROOTFS_DIR（/local/ubuntu）——
+# apt/dpkg 写它需要 root-owned。
+find "$PREFIX" -mindepth 1 -depth \
+    -not -path "$ROOTFS_DIR" -not -path "$ROOTFS_DIR/*" \
+    -not -user "$app_uid" -not -lname '*' \
+    -exec chown "$app_uid:$app_uid" {} + 2>/dev/null || true
+
 # 自愈 chroot 内 root 进程写的用户态文件：npm install / corepack 装 pnpm 时创建 symlink
 # 与 cache 全部 owner=root。App 启动 agent 时跑这些 binary 触发 EACCES。
 # rootfs /root/{.npm-global,.cache,.config,.local} 都属这一类（init.sh 的 umask=002 让新文件
