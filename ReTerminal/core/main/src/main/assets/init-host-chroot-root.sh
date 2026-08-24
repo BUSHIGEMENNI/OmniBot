@@ -138,6 +138,14 @@ fi
 # （owner 必须是 root）。只针对 init.sh / init-host.sh 等 proot 模式下写的 root:root 日志。
 chown_recursive_to_app "$PREFIX/local/run"
 
+# 自愈 chroot 内 root 进程写的用户态文件：npm install / corepack 装 pnpm 时创建 symlink
+# 与 cache 全部 owner=root。App 启动 agent 时跑这些 binary 触发 EACCES。
+# rootfs /root/{.npm-global,.cache,.config,.local} 都属这一类（init.sh 的 umask=002 让新文件
+# group=app_uid，老文件仍 root:root，每次启动自愈即可）。
+for user_dir in .npm-global .cache .config .local .dsh .codex .opencode .claude; do
+    chown_recursive_to_app "$ROOTFS_DIR/root/$user_dir"
+done
+
 # MT 管理器共享存储
 if [ -n "$OMNIBOT_MT_STORAGE_HOST" ] && [ -d "$OMNIBOT_MT_STORAGE_HOST" ]; then
     bind_one "$OMNIBOT_MT_STORAGE_HOST" /mnt/mt
