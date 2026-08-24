@@ -189,7 +189,7 @@ android {
             preferPackagedOmniFlowRuntime.toString(),
         )
         ndk {
-            abiFilters.addAll(listOf("arm64-v8a"))
+            abiFilters.addAll(listOf("arm64-v8a", "x86_64"))
         }
 
     }
@@ -211,6 +211,15 @@ android {
             buildConfigField("String", "APP_UPDATE_WORKER_URL", buildConfigString(appUpdateWorkerUrl))
         }
 
+        create("perf") {
+            dimension = "version"
+            applicationIdSuffix = ".perf"
+            versionNameSuffix = "-perf"
+            buildConfigField("String", "BASE_URL", buildConfigString(resolvedOmnibotBaseUrl))
+            buildConfigField("String", "AI_GATEWAY_URL", buildConfigString(resolvedOmnibotAiGatewayUrl))
+            buildConfigField("String", "APP_UPDATE_WORKER_URL", buildConfigString(appUpdateWorkerUrl))
+        }
+
         create("standard") {
             dimension = "edition"
             buildConfigField("String", "APP_EDITION", "\"standard\"")
@@ -224,7 +233,7 @@ android {
             keyAlias = project.findProperty("OMNI_RELEASE_KEY_ALIAS") as String?
             keyPassword = project.findProperty("OMNI_RELEASE_KEY_PWD") as String?
 
-            // V2/V3签名配置（minSdk=30�?
+            // V2/V3签名配置（minSdk=30�?
             enableV1Signing = false
             enableV2Signing = true
             enableV3Signing = true
@@ -337,7 +346,7 @@ android {
     lint {
         // 使用项目根目录的 lint.xml 配置
         lintConfig = file("../lint.xml")
-        // 将错误视为警告继续构�?
+        // 将错误视为警告继续构�?
         abortOnError = false
     }
 }
