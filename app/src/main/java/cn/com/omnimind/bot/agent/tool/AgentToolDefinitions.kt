@@ -247,8 +247,8 @@ object AgentToolDefinitions {
             "Optional maximum number of results to return. Default 20, range 1-100.",
         "通过应用内置的 {{OMNIBOT_TERMINAL_DISTRIBUTION}}（proot）环境执行一次性的非交互命令。这是默认首选的 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 工具，适合文件处理、脚本、网络诊断、git、python、包管理等绝大多数 CLI 任务；不用于手机界面操作，也不用于交互式 TUI。只有明确需要跨多轮保留 cwd、环境或后台进程时，才改用 terminal_session_*。" to
             "Run a one-shot non-interactive command inside the app's built-in {{OMNIBOT_TERMINAL_DISTRIBUTION}} (proot) environment. This is the default {{OMNIBOT_TERMINAL_DISTRIBUTION}} tool for most CLI work such as file operations, scripts, network diagnostics, git, Python, and package management. It is not for phone UI actions or interactive TUIs. Only switch to `terminal_session_*` when you truly need to preserve cwd, environment, or background state across turns.",
-        "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 中以 executionMode=proot（prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}）执行，传入其他 executionMode 或 distro 会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。" to
-            "`terminal_execute` should occupy the current `tool_calls` by itself. It always runs in {{OMNIBOT_TERMINAL_DISTRIBUTION}} with `executionMode=proot` and `prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}`; other execution modes or distros are ignored. If execution fails, inspect stdout, stderr, or errorMessage in the next turn and decide whether to call it again explicitly. Do not chain other result-dependent tools in the same `tool_calls`.",
+        "terminal_execute 固定在 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 中以 executionMode=proot（prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}）执行，传入其他 executionMode 或 distro 会被忽略。引擎会在 terminal_execute 执行后自动把本轮剩余 tool_call 交由你基于最新结果重新决策，因此可安全地与纯读工具（如 file_read、memory_search）同批下发。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute。" to
+            "`terminal_execute` always runs in {{OMNIBOT_TERMINAL_DISTRIBUTION}} with `executionMode=proot` and `prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}`; other execution modes or distros are ignored. The engine automatically hands the remaining tool calls of this round back to you for re-decision after `terminal_execute` runs, so it is safe to issue it together with pure-read tools (e.g. `file_read`, `memory_search`) in the same `tool_calls`. If execution fails, inspect stdout, stderr, or errorMessage in the next turn and decide whether to call it again explicitly.",
         "要执行的单次 shell 命令，必须非交互。" to
             "Single shell command to execute. It must be non-interactive.",
         "可选。兼容字段，当前固定在 proot {{OMNIBOT_TERMINAL_DISTRIBUTION}} 执行，传入 termux 也会被自动忽略。" to
@@ -600,7 +600,7 @@ object AgentToolDefinitions {
             )
             put(
                 "postToolRule",
-                "terminal_execute 应单独占据当前 tool_calls。该工具会固定在 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 中以 executionMode=proot（prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}）执行，传入其他 executionMode 或 distro 会被忽略。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute；不要在同一个 tool_calls 中串联其他结果依赖型工具。"
+                "terminal_execute 固定在 {{OMNIBOT_TERMINAL_DISTRIBUTION}} 中以 executionMode=proot（prootDistro={{OMNIBOT_TERMINAL_DISTRIBUTION_ID}}）执行，传入其他 executionMode 或 distro 会被忽略。引擎会在 terminal_execute 执行后自动把本轮剩余 tool_call 交由你基于最新结果重新决策，因此可安全地与纯读工具（如 file_read、memory_search）同批下发。若执行失败，可在下一轮基于 stdout/stderr/errorMessage 自行决定是否再次显式调用 terminal_execute。"
             )
             putJsonObject("parameters") {
                 put("type", "object")
