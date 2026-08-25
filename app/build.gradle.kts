@@ -220,6 +220,15 @@ android {
             buildConfigField("String", "APP_UPDATE_WORKER_URL", buildConfigString(appUpdateWorkerUrl))
         }
 
+        create("gemen") {
+            dimension = "version"
+            applicationIdSuffix = ".gemen"
+            versionNameSuffix = "-gemen"
+            buildConfigField("String", "BASE_URL", buildConfigString(resolvedOmnibotBaseUrl))
+            buildConfigField("String", "AI_GATEWAY_URL", buildConfigString(resolvedOmnibotAiGatewayUrl))
+            buildConfigField("String", "APP_UPDATE_WORKER_URL", buildConfigString(appUpdateWorkerUrl))
+        }
+
         create("standard") {
             dimension = "edition"
             buildConfigField("String", "APP_EDITION", "\"standard\"")
