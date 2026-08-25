@@ -25,7 +25,6 @@ import 'package:ui/features/home/pages/chat/utils/keyboard_inset_motion_tracker.
 import 'package:ui/features/home/pages/chat/widgets/agent_run_group_message.dart';
 import 'package:ui/features/home/pages/chat/widgets/chat_empty_greeting.dart';
 import 'package:ui/services/storage_service.dart';
-import 'package:ui/services/voice_playback_coordinator.dart';
 import 'package:ui/services/screen_dialog_service.dart';
 import 'package:ui/services/conversation_service.dart';
 import 'package:ui/services/conversation_history_service.dart';
@@ -455,6 +454,12 @@ class _ChatBotSheetState extends State<ChatBotSheet>
     });
   }
 
+  Future<void> _startManualRecordingFromCommandPanel() async {
+    _messageController.clear();
+    _hideSlashCommandPanel();
+    await _startManualRecordingCommand('/record');
+  }
+
   bool _isPointerInside(GlobalKey key, Offset position) {
     final context = key.currentContext;
     if (context == null) return false;
@@ -509,6 +514,11 @@ class _ChatBotSheetState extends State<ChatBotSheet>
   Future<bool> _tryHandleSlashCommand(String messageText) async {
     final trimmed = messageText.trim();
     if (!trimmed.startsWith('/')) return false;
+
+    if (trimmed == '/record') {
+      await _startManualRecordingFromCommandPanel();
+      return true;
+    }
 
     if (!trimmed.startsWith('/openclaw')) {
       _showSnackBar(
@@ -982,15 +992,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
         prefillTokensPerSecond: prefillTokensPerSecond,
         decodeTokensPerSecond: decodeTokensPerSecond,
       );
-      if (!isError && !isSummarizing && messageText.trim().isNotEmpty) {
-        unawaited(
-          VoicePlaybackCoordinator.instance.onAssistantMessageUpdated(
-            messageId: taskId,
-            text: messageText,
-            isFinal: false,
-          ),
-        );
-      }
     }
   }
 
@@ -1310,14 +1311,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
         _messages[index] = existing.copyWith(content: existing.content);
         _syncMessageLinkPreviews(taskId);
       });
-    }
-    if (!isErrorMessage && messageText.trim().isNotEmpty) {
-      unawaited(
-        VoicePlaybackCoordinator.instance.onAssistantMessageCompleted(
-          messageId: taskId,
-          text: messageText,
-        ),
-      );
     }
     _currentAiMessages.remove(taskId);
     await _saveConversationToDb();
@@ -2580,34 +2573,82 @@ class _ChatBotSheetState extends State<ChatBotSheet>
                         ),
                       ],
                     )
-                  : InkWell(
-                      onTap: () {
-                        _showOpenClawCommandPanel(expand: true);
-                      },
-                      borderRadius: BorderRadius.circular(10),
-                      child: Row(
-                        children: [
-                          Icon(Icons.link, size: 16, color: panelAccentColor),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'OpenClaw',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: panelTextColor,
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        InkWell(
+                          onTap: () => unawaited(
+                            _startManualRecordingFromCommandPanel(),
+                          ),
+                          borderRadius: BorderRadius.circular(10),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.route_rounded,
+                                  size: 16,
+                                  color: panelAccentColor,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    '/record',
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: panelTextColor,
+                                    ),
+                                  ),
+                                ),
+                                Text(
+                                  LegacyTextLocalizer.isEnglish
+                                      ? 'Manual recording'
+                                      : '手动录制',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: panelSecondaryTextColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Divider(height: 12, color: palette.borderSubtle),
+                        InkWell(
+                          onTap: () {
+                            _showOpenClawCommandPanel(expand: true);
+                          },
+                          borderRadius: BorderRadius.circular(10),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.link,
+                                size: 16,
+                                color: panelAccentColor,
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'OpenClaw',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: panelTextColor,
+                                  ),
+                                ),
+                              ),
+                              Text(
+                                LegacyTextLocalizer.isEnglish ? 'Config' : '配置',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: panelSecondaryTextColor,
+                                ),
+                              ),
+                            ],
                           ),
-                          Text(
-                            LegacyTextLocalizer.isEnglish ? 'Config' : '配置',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: panelSecondaryTextColor,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
             ),
     );
@@ -2628,7 +2669,6 @@ class _ChatBotSheetState extends State<ChatBotSheet>
         onInputHeightChanged: _onInputHeightChanged,
         openClawEnabled: _openClawEnabled,
         onToggleOpenClaw: _setOpenClawEnabled,
-        onManualRecordingTap: () => _startManualRecordingCommand('手动录制'),
         useLargeComposerStyle: true,
         useAttachmentPickerForPlus: true,
         onPickAttachment: _pickAttachments,

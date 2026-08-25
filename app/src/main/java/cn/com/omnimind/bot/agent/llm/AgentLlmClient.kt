@@ -440,7 +440,9 @@ class HttpAgentLlmClient(
             json = json,
             includeReasoningInAssistantMessage = routeInfo.requiresReasoningEcho,
             bufferLeadingTextUntilInlineThinkTag = shouldBufferLeadingInlineThinkTag(routeInfo),
-            guardLeadingReasoningLeak = shouldGuardNvidiaKimiReasoningLeak(routeInfo)
+            guardLeadingReasoningLeak = shouldGuardNvidiaKimiReasoningLeak(routeInfo),
+            captureAnthropicContentBlocks = routeInfo.requiresAnthropicThinkingReplay,
+            anthropicSourceModel = routeInfo.resolvedModel
         )
         var lastReasoning = ""
         var lastReasoningEmitLength = 0

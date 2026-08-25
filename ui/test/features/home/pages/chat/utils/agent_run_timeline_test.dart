@@ -13,6 +13,25 @@ void main() {
     expect(entries.first.group?.visibleMessagesNewestFirst.single.text, '最终回答');
   });
 
+  test('duplicate message ids occupy one timeline slot with latest data', () {
+    final messages = _buildCompletedRunMessages();
+    final thinking = messages.firstWhere(
+      (message) => message.cardData?['type'] == 'deep_thinking',
+    );
+    final entries = buildAgentRunTimelineEntries(<ChatMessageModel>[
+      thinking,
+      ...messages,
+    ]);
+
+    expect(entries.first.group?.thinkingCount, 1);
+    expect(
+      entries.first.group?.processMessagesOldestFirst.where(
+        (message) => message.id == thinking.id,
+      ),
+      hasLength(1),
+    );
+  });
+
   test('keeps every prose message visible when history lacks isFinal', () {
     final messages = <ChatMessageModel>[
       _assistantMessage(

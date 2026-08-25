@@ -193,7 +193,24 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
       return <Map<String, dynamic>>[_buildReasoningEffortCommandCard()];
     }
 
-    final commands = <Map<String, dynamic>>[];
+    final commands = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'cardId': 'slash-command-record',
+        'toolName': '/record',
+        'toolTitle': '/record',
+        'displayName': '/record',
+        'toolType': 'command',
+        'toolTypeLabel': LegacyTextLocalizer.isEnglish ? 'Recording' : '录制',
+        'status': 'running',
+        'statusLabel': LegacyTextLocalizer.isEnglish ? 'Action' : '操作',
+        'summary': LegacyTextLocalizer.isEnglish
+            ? 'Manually record a reusable operation flow'
+            : '手动录制可复用的操作流程',
+        'progress': LegacyTextLocalizer.isEnglish
+            ? 'Start recording from the floating control'
+            : '通过悬浮控件开始录制',
+      },
+    ];
     if (_supportsManualContextCompaction) {
       commands.add(<String, dynamic>{
         'cardId': 'slash-command-compact',
@@ -479,6 +496,11 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
         .toString()
         .trim();
     switch (command) {
+      case '/record':
+        _messageController.clear();
+        _hideSlashCommandPanel();
+        unawaited(_startManualRecordingCommand('/record'));
+        break;
       case '/compact':
         unawaited(_executeManualContextCompactionCommand());
         break;
@@ -1327,9 +1349,6 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
                       onCancelTask: _onCancelTask,
                       onPopupVisibilityChanged: _onPopupVisibilityChanged,
                       onTerminalTap: _handleTerminalToolTap,
-                      onManualRecordingTap: _activeMode == ChatPageMode.normal
-                          ? () => _startManualRecordingCommand('手动录制')
-                          : null,
                       useLargeComposerStyle: true,
                       useAttachmentPickerForPlus: true,
                       onPickAttachment: _pickAttachments,
@@ -1563,6 +1582,9 @@ mixin _ChatPageUiMixin on _ChatPageStateBase {
     return ChatMessageAnchorBar(
       messages: messages,
       activeAgentTaskIds: activeTaskIds,
+      conversationAgentId: mode == ChatPageMode.agent
+          ? _activeAcpAgentId
+          : null,
       conversationSignature:
           '${mode.name}:${_modeState(mode).currentConversationId ?? ''}',
       bottomInset: bottomInset,
