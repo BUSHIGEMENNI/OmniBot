@@ -8,7 +8,9 @@ import cn.com.omnimind.baselib.llm.ChatCompletionStreamOptions
 import cn.com.omnimind.baselib.llm.ChatCompletionTool
 import cn.com.omnimind.baselib.llm.contentText
 import cn.com.omnimind.baselib.util.OmniLog
+import cn.com.omnimind.bot.agent.runtime.ToolExecutionPlanner
 import cn.com.omnimind.bot.agent.tool.AgentToolConcurrencyPolicy
+import cn.com.omnimind.bot.agent.tool.ToolConcurrency
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.CancellationException
@@ -677,29 +679,23 @@ class AgentOrchestrator(
                     validatedCalls.add(toolCall)
                 }
 
-                // Phase B — partition validated calls into batches and execute.
+                // Phase B — partition validated calls into streaming execution steps.
                 if (!advanceToNextRound && validatedCalls.isNotEmpty()) {
-                    val batches = AgentToolConcurrencyPolicy.partitionToolCalls(
-                        validatedCalls,
-                        parsedArgsMap
-                    )
+                    val steps = ToolExecutionPlanner.plan(validatedCalls, parsedArgsMap)
                     logInfo(
                         tag,
-                        "round=$round batches=${batches.size} " +
-                            batches.joinToString(separator = ",") { batch ->
-                                "${if (batch.parallel) "P" else "S"}${batch.calls.size}"
+                        "round=$round steps=${steps.size} " +
+                            steps.joinToString(separator = ",") { step ->
+                                "${if (step.calls.size > 1) "P" else "S"}${step.calls.size}"
                             }
                     )
 
-                    batchLoop@ for (batch in batches) {
-                        val batchResults: List<Pair<AssistantToolCall, ToolExecutionResult>>
-                        if (batch.parallel && batch.calls.size > 1) {
-                            // Parallel batch: launch async per call. callback.onToolCallStart /
-                            // onToolCallComplete fire from inside each async (lets UI update each
-                            // card independently). State mutation + memory append happen serially
-                            // below to preserve ToolCall ↔ ToolMessage pairing order.
-                            batchResults = coroutineScope {
-                                batch.calls.map { call ->
+                    stepLoop@ for (step in steps) {
+                        val stepResults: List<Pair<AssistantToolCall, ToolExecutionResult>>
+                        if (step.calls.size > 1) {
+                            // Parallel step: all calls are PARALLEL_SAFE (pure reads).
+                            stepResults = coroutineScope {
+                                step.calls.map { call ->
                                     async {
                                         val desc = descriptorMap.getValue(call.id)
                                         val args = parsedArgsMap.getValue(call.id)
@@ -720,32 +716,27 @@ class AgentOrchestrator(
                                 }.awaitAll()
                             }
                         } else {
-                            // Serial batch (single call or barrier).
-                            val singles = mutableListOf<Pair<AssistantToolCall, ToolExecutionResult>>()
-                            for (call in batch.calls) {
-                                val desc = descriptorMap.getValue(call.id)
-                                val args = parsedArgsMap.getValue(call.id)
-                                val result = executeSingleTool(
-                                    env = input.executionEnv,
-                                    callback = callback,
-                                    toolCall = call,
-                                    descriptor = desc,
-                                    parsedArgs = args
-                                )
-                                callback.onToolCallComplete(
-                                    call.id,
-                                    call.function.name,
-                                    result
-                                )
-                                singles.add(call to result)
-                            }
-                            batchResults = singles
+                            // Single-call step (serial barrier or dependency tool).
+                            val call = step.calls.single()
+                            val desc = descriptorMap.getValue(call.id)
+                            val args = parsedArgsMap.getValue(call.id)
+                            val result = executeSingleTool(
+                                env = input.executionEnv,
+                                callback = callback,
+                                toolCall = call,
+                                descriptor = desc,
+                                parsedArgs = args
+                            )
+                            callback.onToolCallComplete(
+                                call.id,
+                                call.function.name,
+                                result
+                            )
+                            stepResults = listOf(call to result)
                         }
 
-                        var breakBatchLoopAfterPost = false
-                        // Phase C — serial post-process: write results back to memory in
-                        // original call order, accumulate UI state, honor stop conditions.
-                        for ((call, result) in batchResults) {
+                        // Phase C — write results back immediately, in original order.
+                        for ((call, result) in stepResults) {
                             val desc = descriptorMap.getValue(call.id)
                             val args = parsedArgsMap.getValue(call.id)
                             executedTools.add(result)
@@ -794,6 +785,7 @@ class AgentOrchestrator(
                             }
                             if (
                                 !terminated &&
+                                !advanceToNextRound &&
                                 isUserStoppedVlmTask(call.function.name, result)
                             ) {
                                 terminated = true
@@ -809,24 +801,27 @@ class AgentOrchestrator(
                                     "The result of tool ${call.function.name} ended the conversation, so the remaining tool calls in this assistant message were not processed."
                                 )
                             }
-                            if (
-                                !terminated &&
-                                !advanceToNextRound &&
-                                isExclusiveTurnBoundaryTool(call.function.name)
-                            ) {
-                                advanceToNextRound = true
-                                breakBatchLoopAfterPost = true
-                                pendingToolCallBackfillReason = t(
-                                    "独占工具 ${call.function.name} 已占用本轮，当前 assistant 消息中的剩余 tool_call 未执行。",
-                                    "Exclusive tool ${call.function.name} occupied this turn, so the remaining tool calls in this assistant message were not executed."
-                                )
-                            }
-                            if (terminated) {
-                                breakBatchLoopAfterPost = true
-                            }
                         }
-                        if (breakBatchLoopAfterPost) {
-                            break@batchLoop
+
+                        // A dependency tool (non-PARALLEL_SAFE) just ran and its result
+                        // is now in memory. Stop this round so the model re-decides the
+                        // remaining calls against the fresh result (streaming semantics).
+                        val stepHasDependencyTool = step.calls.any { call ->
+                            AgentToolConcurrencyPolicy.classify(
+                                call.function.name,
+                                parsedArgsMap.getValue(call.id)
+                            ) != ToolConcurrency.PARALLEL_SAFE
+                        }
+                        if (!terminated && stepHasDependencyTool) {
+                            advanceToNextRound = true
+                            pendingToolCallBackfillReason = t(
+                                "工具 ${step.calls.joinToString(",") { it.function.name }} 已执行并写回结果，本轮剩余 tool_call 交由模型基于最新结果重新决策。",
+                                "Tool ${step.calls.joinToString(",") { it.function.name }} executed and its result is written back; the remaining tool calls in this round are left for the model to re-decide against the fresh result."
+                            )
+                            break@stepLoop
+                        }
+                        if (terminated) {
+                            break@stepLoop
                         }
                     }
                 }
@@ -1153,15 +1148,6 @@ class AgentOrchestrator(
             "本轮未执行该工具。原因：$reason 如仍需要此工具，请由模型在下一轮重新发起。",
             "This tool was not executed in this turn. Reason: $reason If it is still needed, the model should call it again in the next turn."
         )
-    }
-
-    private fun isExclusiveTurnBoundaryTool(toolName: String): Boolean {
-        return toolName == "terminal_execute" ||
-            toolName == "android_privileged_action" ||
-            toolName == "android_privileged_session_start" ||
-            toolName == "android_privileged_session_exec" ||
-            toolName == "android_privileged_session_read" ||
-            toolName == "android_privileged_session_stop"
     }
 
     private fun isUserStoppedVlmTask(
