@@ -935,7 +935,7 @@ class AgentOrchestratorTest {
     }
 
     @Test
-    fun exclusiveToolBackfillsRemainingToolCallIds() = runBlocking {
+    fun `dependencyToolWritesResultAndLeavesRemainingCallsForNextRound`() = runBlocking {
         val llmClient = FakeLlmClient(
             turns = listOf(
                 assistantTurn(
@@ -946,13 +946,13 @@ class AgentOrchestratorTest {
                             id = "call-terminal"
                         ),
                         toolCall(
-                            name = "file_search",
-                            arguments = """{"query":"README"}""",
-                            id = "call-search"
+                            name = "file_read",
+                            arguments = """{"path":"/tmp/x"}""",
+                            id = "call-read"
                         )
                     )
                 ),
-                assistantTurn(content = "终端命令执行后，我改成直接说明状态。")
+                assistantTurn(content = "终端命令执后，我改成直接说明状态。")
             )
         )
         val toolExecutor = FakeToolExecutor(
@@ -968,20 +968,21 @@ class AgentOrchestratorTest {
                 )
             )
         )
+        val callback = RecordingCallback()
 
         createOrchestrator(llmClient, toolExecutor).run(
             AgentOrchestrator.Input(
-                callback = RecordingCallback(),
+                callback = callback,
                 initialMessages = initialMessages("执行 echo hi"),
                 executionEnv = FakeExecutionEnvironment("执行 echo hi")
             )
         )
 
-        val toolMessages = llmClient.requests[1].messages.filter { it.role == "tool" }
-        assertEquals(2, llmClient.requests.size)
+        // terminal_execute ran and its result is in memory; file_read was NOT executed
+        // this round (left for model to re-decide against terminal's fresh output).
         assertEquals(listOf("terminal_execute"), toolExecutor.executeCalls)
-        assertEquals(listOf("call-terminal", "call-search"), toolMessages.map { it.toolCallId })
-        assertTrue(toolMessages.last().content.toString().contains("本轮未执行该工具"))
+        // No "exclusive" synthetic result was produced.
+        assertFalse(callback.finalChatMessages().any { it.contains("独占") || it.contains("Exclusive") })
     }
 
     @Test
