@@ -1052,6 +1052,15 @@ class AgentOrchestratorTest {
         // Round 2: correct file_read ran.
         assertEquals(listOf("terminal_execute", "file_read"), toolExecutor.executeCalls)
         assertEquals(3, llmClient.requests.size)
+
+        // Round 2's file_read must use the correct path (not the round-1 guess).
+        // The round-2 assistant decision is appended into the request that
+        // precedes round 3 (index 2), alongside the round-1 guess history.
+        val round2FileRead = llmClient.requests[2].messages
+            .flatMap { it.toolCalls.orEmpty() }
+            .lastOrNull { it.function.name == "file_read" }
+        assertNotNull(round2FileRead)
+        assertTrue(round2FileRead!!.function.arguments.contains("/tmp/out.txt"))
     }
 
     @Test
