@@ -91,6 +91,15 @@ internal fun isLengthStopAtContextCapacity(
     return prompt.toLong() * 100L >= capacity.toLong() * 99L
 }
 
+/**
+ * 自研引擎的 agent 主循环（流式单工具执行）。
+ *
+ * 工具执行采用「流式单工具」语义：模型一次下发的多个 tool_call 由
+ * [ToolExecutionPlanner] 分成若干执行步——连续且 [ToolConcurrency.PARALLEL_SAFE]
+ * 的纯读工具合并进同一步并行执行；任何非 PARALLEL_SAFE 的依赖型工具单独成一步。
+ * 每个工具执行完立即把结果写回 memory，依赖型工具执行后触发 `advanceToNextRound`，
+ * 让模型基于真实结果重新决策剩余调用，避免「批量执行 + 延迟写回」导致的盲发。
+ */
 class AgentOrchestrator(
     private val llmClient: AgentLlmClient,
     private val toolRegistry: AgentToolCatalog,
