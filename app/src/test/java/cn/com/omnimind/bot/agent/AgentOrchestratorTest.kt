@@ -986,6 +986,75 @@ class AgentOrchestratorTest {
     }
 
     @Test
+    fun `modelRedecidesDependentToolAgainstFreshTerminalResult`() = runBlocking {
+        val llmClient = FakeLlmClient(
+            turns = listOf(
+                // Round 1: model issues terminal_execute + a guessed file_read.
+                assistantTurn(
+                    toolCalls = listOf(
+                        toolCall(
+                            name = "terminal_execute",
+                            arguments = """{"command":"echo data > /tmp/out.txt"}""",
+                            id = "call-terminal"
+                        ),
+                        toolCall(
+                            name = "file_read",
+                            arguments = """{"path":"/tmp/guess.txt"}""",
+                            id = "call-guess"
+                        )
+                    )
+                ),
+                // Round 2: model sees terminal result, re-decides file_read with correct path.
+                assistantTurn(
+                    toolCalls = listOf(
+                        toolCall(
+                            name = "file_read",
+                            arguments = """{"path":"/tmp/out.txt"}""",
+                            id = "call-correct"
+                        )
+                    )
+                ),
+                assistantTurn(content = "已读取生成的文件。")
+            )
+        )
+        val toolExecutor = FakeToolExecutor(
+            results = mapOf(
+                "terminal_execute" to listOf(
+                    ToolExecutionResult.TerminalResult(
+                        toolName = "terminal_execute",
+                        summaryText = "命令执行完成",
+                        previewJson = "{}",
+                        rawResultJson = "{}",
+                        success = true
+                    )
+                ),
+                "file_read" to listOf(
+                    ToolExecutionResult.ContextResult(
+                        toolName = "file_read",
+                        summaryText = "已读取文件",
+                        previewJson = "{}",
+                        rawResultJson = "{}",
+                        success = true
+                    )
+                )
+            )
+        )
+
+        createOrchestrator(llmClient, toolExecutor).run(
+            AgentOrchestrator.Input(
+                callback = RecordingCallback(),
+                initialMessages = initialMessages("生成文件后读取"),
+                executionEnv = FakeExecutionEnvironment("生成文件后读取")
+            )
+        )
+
+        // Round 1: only terminal_execute ran; guessed file_read was deferred.
+        // Round 2: correct file_read ran.
+        assertEquals(listOf("terminal_execute", "file_read"), toolExecutor.executeCalls)
+        assertEquals(3, llmClient.requests.size)
+    }
+
+    @Test
     fun promptTokenUsageIsReportedAfterEveryModelTurn() = runBlocking {
         val llmClient = FakeLlmClient(
             turns = listOf(
